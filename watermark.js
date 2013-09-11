@@ -41,6 +41,7 @@
 		return arraybuffer;
 	};
 	function upload( resourceUrl, callback ){
+	    console.log('Upload ' + resourceUrl + '...');
 	    var self = this, d = new Deferred();
 	    
 	    var xhr = new XMLHttpRequest();
@@ -50,6 +51,7 @@
 	    xhr.responseType = 'arraybuffer';
 	    xhr.onload = function(e) {
 	        if (xhr.status == 200) {
+	        	console.log('uploading done');
 	        	if( callback ){
 	        		callback( xhr.response, d );
 	        	}else{
@@ -86,16 +88,15 @@
 			if(opacity != 255){
 				if(!watermark.complete)
 					watermark.onload = function(){	
-						res = applyTransparency();
-						res.done(function(k){ d.resolve(k) })
+						applyTransparency();
+						d.resolve();
 					}
 				else{
-					res = applyTransparency();
-					res.done(function(k){ d.resolve(k) })
+					applyTransparency();
+					d.resolve();
 				}
 			}else{
-				res = applyWatermarks();
-				res.done(function(k){ d.resolve(k) })
+				d.resolve(new Error('opacity == 255'));
 			}
 
 			return d;
@@ -122,8 +123,6 @@
 			// because browsers recalculation doesn't work as fast as needed
 			watermark.width = w;
 			watermark.height = h;
-
-			return applyWatermarks();
 		},
 		configure = function(config){
 			if(config["arrayBuffer"])
@@ -170,54 +169,31 @@
 			img.onload = null;
 	
 			img.src = gcanvas.toDataURL();
-
-		},
-		applyWatermarks = function(){
-				var els = images,
-				len = els.length,
-				def = new Deferred,
-				promises = [];
-				imagesWithWatermark = [];
-				while(len--){
-					var img = els[len];
-					
-					promises.push( upload( img , function( res, d ){
-							var blob = new Blob([res], {type: "image/jpeg"});
-							var img = document.createElement('img');
-							img.src = URL.createObjectURL(blob);
-
-							if(!img.complete){
-								img.onload = function(){
-									applyWatermark(this);
-									imagesWithWatermark.push(img);
-									d.resolve();
-								};
-							}else{
-								applyWatermark(img);
-								imagesWithWatermark.push(img);
-								d.resolve();
-							}
-						} )
-					);
-				}				
-
-				Deferred.when.apply( Deferred, promises ).done(function(){
-					if( arrayBuffer ){
-						for( var i = 0; i < imagesWithWatermark.length; i++ ){
-							imagesWithWatermark[i] = decode( imagesWithWatermark[i].src.split(',')[1] );
-						}
-						def.resolve(imagesWithWatermark);
-					}else{
-						def.resolve(imagesWithWatermark);
-					}
-				});
-			return def;
+			
+			if( arrayBuffer ){
+				img = decode( img.src.split(',')[1] );
+			}
+			return img;
 		};
-		
 		
 		return {
 			init: function(config){
 				return configure(config);
+			},
+			print: function( image ){
+				return upload( image , function( res, d ){
+					var blob = new Blob([res], {type: "image/jpeg"});
+					var img = document.createElement('img');
+					img.src = URL.createObjectURL(blob);
+
+					if(!img.complete){
+						img.onload = function(){
+							d.resolve(applyWatermark(this));
+						};
+					}else{
+						d.resolve(applyWatermark(img));
+					}
+				})
 			}
 		};
 	})(w);

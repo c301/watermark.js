@@ -15,10 +15,10 @@
 		
 		var load = false;
 		window.onload = function(){
+			imgs = [ "1.jpg", "http://watermark.com/2.jpg", "http://watermark.com/3.jpg" ];
 			if(!load) {
 				var init = wmark.init({
 					/* config goes here */
-					"images": [ "1.jpg", "http://watermark.com/2.jpg", "http://watermark.com/3.jpg" ], //we can use urls to upload imgs
 					"position": "top-right", // default "bottom-right"
 					"opacity": 50, // default 50
 					"className": "watermark", // default "watermark"
@@ -26,12 +26,14 @@
 					"arrayBuffer": true //return arrayBuffer
 				});
 				
-				init.done(function(imgs){
+				init.done(function(){
 					for(var i = 0; i < imgs.length; i++  ){
-						var k = document.createElement('img');
-						var blob = new Blob([imgs[i]], {type: "image/jpeg"});
-						k.src = URL.createObjectURL(blob);
-						document.querySelector('#container').appendChild(k);
+						wmark.print(imgs[i]).done(function( ab, fn ){
+							var k = document.createElement('img');
+							var blob = new Blob([ab], {type: "image/jpeg"});
+							k.src = URL.createObjectURL(blob);
+							document.querySelector('#container').appendChild(k);
+						})
 					}
 				})
 				load = true;
