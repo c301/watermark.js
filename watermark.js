@@ -81,7 +81,7 @@
 			doc.body.appendChild(gcanvas);
 		},
 		initWatermark = function(){
-			watermark = new Image();
+			watermark = document.createElement('img');
 			watermark.src = "";
 			watermark.src = watermarkPath;
 			var res, d = new Deferred();
