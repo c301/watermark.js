@@ -9,14 +9,66 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
  */
 
+
 (function(w){
+	function decode(base64) {
+		var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		var bufferLength = base64.length * 0.75,
+		len = base64.length, i, p = 0,
+		encoded1, encoded2, encoded3, encoded4;
+
+		if (base64[base64.length - 1] === "=") {
+				bufferLength--;
+			if (base64[base64.length - 2] === "=") {
+				bufferLength--;
+			}
+		}
+
+		var arraybuffer = new ArrayBuffer(bufferLength),
+			bytes = new Uint8Array(arraybuffer);
+
+		for (i = 0; i < len; i+=4) {
+			encoded1 = chars.indexOf(base64[i]);
+			encoded2 = chars.indexOf(base64[i+1]);
+			encoded3 = chars.indexOf(base64[i+2]);
+			encoded4 = chars.indexOf(base64[i+3]);
+
+			bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+			bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+			bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
+		}
+
+		return arraybuffer;
+	};
+	function upload( resourceUrl, callback ){
+	    var self = this, d = new Deferred();
+	    
+	    var xhr = new XMLHttpRequest();
+	    xhr.open('GET', resourceUrl, true);
+
+	    // Response type arraybuffer - XMLHttpRequest 2
+	    xhr.responseType = 'arraybuffer';
+	    xhr.onload = function(e) {
+	        if (xhr.status == 200) {
+	        	if( callback ){
+	        		callback( xhr.response, d );
+	        	}else{
+	            	d.resolve( xhr.response );
+	        	}
+	        }
+	    };
+	    xhr.send();
+	    return d;
+	}
 	var wm = (function(w){
 		var doc = w.document,
 		gcanvas = {},
 		gctx = {},
 		imgQueue = [],
 		className = "watermark",
+		arrayBuffer = false,
 		watermark = false,
+		images = [],
 		watermarkPosition = "bottom-right",
 		watermarkPath = "watermark.png?"+(+(new Date())),
 		opacity = (255/(100/50)), // 50%
@@ -30,20 +82,23 @@
 			watermark = new Image();
 			watermark.src = "";
 			watermark.src = watermarkPath;
-			
+			var res, d = new Deferred();
 			if(opacity != 255){
 				if(!watermark.complete)
 					watermark.onload = function(){	
-						applyTransparency();
+						res = applyTransparency();
+						res.done(function(k){ d.resolve(k) })
 					}
-				else
-					applyTransparency();
-				
-
+				else{
+					res = applyTransparency();
+					res.done(function(k){ d.resolve(k) })
+				}
 			}else{
-				applyWatermarks();
+				res = applyWatermarks();
+				res.done(function(k){ d.resolve(k) })
 			}
-			
+
+			return d;
 		},
 		// function for applying transparency to the watermark
 		applyTransparency = function(){
@@ -68,9 +123,13 @@
 			watermark.width = w;
 			watermark.height = h;
 
-			applyWatermarks();
+			return applyWatermarks();
 		},
 		configure = function(config){
+			if(config["arrayBuffer"])
+				arrayBuffer = config["arrayBuffer"];
+			if(config["images"])
+				images = config["images"];
 			if(config["watermark"])
 				watermark = config["watermark"];
 			if(config["path"])
@@ -83,7 +142,7 @@
 				className = config["className"];
 			
 			initCanvas();
-			initWatermark();
+			return initWatermark();
 		}
 		setCanvasSize = function(w, h){
 			gcanvas.width = w;
@@ -114,29 +173,51 @@
 
 		},
 		applyWatermarks = function(){
-			setTimeout(function(){
-				var els = doc.getElementsByClassName(className),
-				len = els.length;
+				var els = images,
+				len = els.length,
+				def = new Deferred,
+				promises = [];
+				imagesWithWatermark = [];
 				while(len--){
 					var img = els[len];
-					if(img.tagName.toUpperCase() != "IMG")
-						continue;
 					
-					if(!img.complete){
-						img.onload = function(){
-							applyWatermark(this);
-						};
+					promises.push( upload( img , function( res, d ){
+							var blob = new Blob([res], {type: "image/jpeg"});
+							var img = document.createElement('img');
+							img.src = URL.createObjectURL(blob);
+
+							if(!img.complete){
+								img.onload = function(){
+									applyWatermark(this);
+									imagesWithWatermark.push(img);
+									d.resolve();
+								};
+							}else{
+								applyWatermark(img);
+								imagesWithWatermark.push(img);
+								d.resolve();
+							}
+						} )
+					);
+				}				
+
+				Deferred.when.apply( Deferred, promises ).done(function(){
+					if( arrayBuffer ){
+						for( var i = 0; i < imagesWithWatermark.length; i++ ){
+							imagesWithWatermark[i] = decode( imagesWithWatermark[i].src.split(',')[1] );
+						}
+						def.resolve(imagesWithWatermark);
 					}else{
-						applyWatermark(img);
+						def.resolve(imagesWithWatermark);
 					}
-				}
-			},10);
+				});
+			return def;
 		};
 		
 		
 		return {
 			init: function(config){
-				configure(config);
+				return configure(config);
 			}
 		};
 	})(w);
